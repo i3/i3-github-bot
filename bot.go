@@ -45,7 +45,7 @@ const updateTokenForm = `
 `
 
 var (
-	reMajorVersion = regexp.MustCompile(`(i3|i3status|i3lock):?\s*(?:version|v|vers|ver)?:?\s*(3\.[a-e]|3\.\p{Greek}|[0-9]\.[0-9.]+)`)
+	reMajorVersion = regexp.MustCompile(`(i3|i3status|i3lock):?\s*(?:version|v|vers|ver)?:?\s*(3\.[a-e]|3\.\p{Greek}|[0-9]\.[0-9]+)`)
 )
 
 func init() {

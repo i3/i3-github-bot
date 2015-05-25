@@ -32,7 +32,7 @@ So I got back to the git repo, and this time ran ` + "`make clean`" + ` before `
 I guess this could lead to pretty strange situations with misleading data, if anybody uses the output for bug reporting.
 `
 	matches := reMajorVersion.FindStringSubmatch(body)
-	if len(matches) < 3 || matches[1] != "i3" || matches[2] != "4.10.1" {
+	if len(matches) < 3 || matches[1] != "i3" || matches[2] != "4.10" {
 		t.Fatalf("Issue #1640 not recognized properly, matches = %+v", matches)
 	}
 }
