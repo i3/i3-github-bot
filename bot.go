@@ -10,7 +10,6 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
-	"regexp"
 	"strings"
 
 	"github.com/google/go-github/github"
@@ -43,10 +42,6 @@ const updateTokenForm = `
 </body>
 </html>
 `
-
-var (
-	reMajorVersion = regexp.MustCompile(`(i3|i3status|i3lock):?\s*(?:version|v|vers|ver)?:?\s*(3\.[a-e]|3\.\p{Greek}|[0-9]\.[0-9]+)`)
-)
 
 func init() {
 	http.HandleFunc("/issues", issuesHandler)
@@ -324,7 +319,7 @@ func issueCommentHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if currentLabels["missing-version"] || currentLabels["unsupported-version"] {
-		matches := reMajorVersion.FindStringSubmatch(*payload.Comment.Body)
+		matches := extractVersion(*payload.Comment.Body)
 		if len(matches) == 0 {
 			return
 		}
@@ -432,7 +427,7 @@ func issuesHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	matches := reMajorVersion.FindStringSubmatch(*payload.Issue.Body)
+	matches := extractVersion(*payload.Issue.Body)
 	if len(matches) == 0 {
 		if addLabel(githubclient, payload, w, "missing-version") {
 			addComment(githubclient, payload, w, "I don’t see a version number. "+

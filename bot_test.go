@@ -31,8 +31,48 @@ So I got back to the git repo, and this time ran ` + "`make clean`" + ` before `
 
 I guess this could lead to pretty strange situations with misleading data, if anybody uses the output for bug reporting.
 `
-	matches := reMajorVersion.FindStringSubmatch(body)
+	matches := extractVersion(body)
 	if len(matches) < 3 || matches[1] != "i3" || matches[2] != "4.10" {
 		t.Fatalf("Issue #1640 not recognized properly, matches = %+v", matches)
+	}
+}
+
+func TestVersion1694(t *testing.T) {
+	body := `
+i3 >= 4.8 doesn't play nice with xfce4-panel (=4.10.1) anymore.
+
+I normally start i3 under xfce4-session (=4.12.1) with
+
+` + "```bash" + `
+pkill xfwm4
+nohup i3 > /dev/null &
+` + "```" + `
+
+and this worked great with i3 4.7.* I was running until recently, i3bar covering the lower xfce4-panel whenever ` + "Mod" + ` key was held.
+
+Now with 4.8, or even
+
+` + "```" + `
+Binary i3 version:  4.10.2 (2015-04-16, branch "4.10.2")
+Running i3 version: 4.10.2 (2015-04-16, branch "4.10.2")
+` + "```" + `
+
+the xfce4-panel disappears after a few workspace switches. It is just not there, invisible. The panel process is still running and responding the xfce4-whiskermenu-plugin still pops up on its binding, but the window is positioned in +0+0 corner.
+
+This happens with a default generated i3 config with only one line added:
+
+` + "```" + `
+exec --no-startup-id xfce4-panel --disable-wm-check
+` + "```" + `
+
+The log file that records the disappearance of the panel: http://logs.i3wm.org/logs/5745865499082752.bz2
+
+Behavior is the same under xfce4-session as well as i3-with-shmlog xsession.
+
+How do I go further with debugging this? Can you confirm the bug?
+`
+	matches := extractVersion(body)
+	if len(matches) < 3 || matches[1] != "i3" || matches[2] != "4.10" {
+		t.Fatalf("Issue #1694 not recognized properly, matches = %+v", matches)
 	}
 }
