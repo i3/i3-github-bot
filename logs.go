@@ -18,7 +18,6 @@ import (
 	"golang.org/x/oauth2/google"
 	"google.golang.org/appengine"
 	"google.golang.org/appengine/datastore"
-	"google.golang.org/appengine/file"
 	"google.golang.org/appengine/log"
 	"google.golang.org/appengine/urlfetch"
 	"google.golang.org/cloud"
@@ -29,6 +28,8 @@ const (
 	fileName   = `[a-zA-Z0-9-_/.]+\.[ch]`
 	identifier = `[_a-zA-Z][_a-zA-Z0-9]{0,30}`
 	lineNumber = `[0-9]+`
+
+	defaultBucket = `i3-github-bot.appspot.com`
 )
 
 // Matches an i3 log line, such as:
@@ -37,6 +38,8 @@ const (
 var i3LogLine = regexp.MustCompile(` - ` + fileName + `:` + identifier + `:` + lineNumber + ` - `)
 
 type Blobref struct {
+	// TODO: remove this now-unused attribute (we are storing objects in Google
+	// Cloud Storage now, not blobstore).
 	Blobkey  appengine.BlobKey
 	Filename string
 }
@@ -46,10 +49,21 @@ func init() {
 	http.HandleFunc("/logs/", logsHandler)
 }
 
+func cloudContext(appengineCtx context.Context) context.Context {
+	hc := &http.Client{
+		Transport: &oauth2.Transport{
+			Source: google.AppEngineTokenSource(appengineCtx, storage.ScopeFullControl),
+			Base:   &urlfetch.Transport{Context: appengineCtx},
+		},
+	}
+	return cloud.NewContext(appengine.AppID(appengineCtx), hc)
+}
+
 func logsHandler(w http.ResponseWriter, r *http.Request) {
 	var blobref Blobref
 
 	c := appengine.NewContext(r)
+	ctx := cloudContext(c)
 
 	strid := path.Base(r.URL.Path)
 	if strings.HasSuffix(strid, ".bz2") {
@@ -58,71 +72,34 @@ func logsHandler(w http.ResponseWriter, r *http.Request) {
 
 	intid, err := strconv.ParseInt(strid, 0, 64)
 	if err != nil {
+		log.Errorf(ctx, "strconv.ParseInt: %v", err)
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}
 	if err := datastore.Get(c, datastore.NewKey(c, "blobref", "", intid, nil), &blobref); err != nil {
+		log.Errorf(ctx, "datastore.Get: %v", err)
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}
 
-	if blobref.Blobkey != "" {
-		// TODO: remove this code path once we migrated all objects to GCS
-		hdr := w.Header()
-		hdr.Set("X-AppEngine-BlobKey", string(blobref.Blobkey))
-
-		if hdr.Get("Content-Type") == "" {
-			// This value is known to dev_appserver to mean automatic.
-			// In production this is remapped to the empty value which
-			// means automatic.
-			hdr.Set("Content-Type", "application/vnd.google.appengine.auto")
-		}
-	} else {
-		hc := &http.Client{
-			Transport: &oauth2.Transport{
-				Source: google.AppEngineTokenSource(c, storage.ScopeFullControl),
-				Base:   &urlfetch.Transport{Context: c},
-			},
-		}
-		ctx := cloud.NewContext(appengine.AppID(c), hc)
-		bucket, err := file.DefaultBucketName(c)
-		if err != nil {
-			log.Errorf(ctx, "default bucket: %v", err)
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		rc, err := storage.NewReader(ctx, bucket, blobref.Filename)
-		if err != nil {
-			log.Errorf(ctx, "NewReader: %v", err)
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		defer rc.Close()
-		w.Header().Set("Content-Type", "application/octet-stream")
-		if _, err := io.Copy(w, rc); err != nil {
-			log.Errorf(ctx, "Copy: %v", err)
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
+	rc, err := storage.NewReader(ctx, defaultBucket, blobref.Filename)
+	if err != nil {
+		log.Errorf(ctx, "NewReader: %v", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
-
+	defer rc.Close()
+	w.Header().Set("Content-Type", "application/octet-stream")
+	if _, err := io.Copy(w, rc); err != nil {
+		log.Errorf(ctx, "Copy: %v", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 }
 
 func writeBlob(c context.Context, r io.Reader) (string, error) {
 	filename := strconv.FormatInt(time.Now().UnixNano(), 10)
-	hc := &http.Client{
-		Transport: &oauth2.Transport{
-			Source: google.AppEngineTokenSource(c, storage.ScopeFullControl),
-			Base:   &urlfetch.Transport{Context: c},
-		},
-	}
-	ctx := cloud.NewContext(appengine.AppID(c), hc)
-	bucket, err := file.DefaultBucketName(c)
-	if err != nil {
-		return "", err
-	}
-	bw := storage.NewWriter(ctx, bucket, filename)
+	bw := storage.NewWriter(cloudContext(c), defaultBucket, filename)
 	bw.ContentType = "application/octet-stream"
 	bw.ACL = []storage.ACLRule{{storage.AllUsers, storage.RoleReader}}
 	if _, err := io.Copy(bw, r); err != nil {
