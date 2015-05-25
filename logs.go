@@ -11,10 +11,18 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
-	"appengine"
-	"appengine/blobstore"
-	"appengine/datastore"
+	"golang.org/x/net/context"
+	"golang.org/x/oauth2"
+	"golang.org/x/oauth2/google"
+	"google.golang.org/appengine"
+	"google.golang.org/appengine/datastore"
+	"google.golang.org/appengine/file"
+	"google.golang.org/appengine/log"
+	"google.golang.org/appengine/urlfetch"
+	"google.golang.org/cloud"
+	"google.golang.org/cloud/storage"
 )
 
 const (
@@ -29,7 +37,8 @@ const (
 var i3LogLine = regexp.MustCompile(` - ` + fileName + `:` + identifier + `:` + lineNumber + ` - `)
 
 type Blobref struct {
-	Blobkey appengine.BlobKey
+	Blobkey  appengine.BlobKey
+	Filename string
 }
 
 func init() {
@@ -57,28 +66,78 @@ func logsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	blobstore.Send(w, blobref.Blobkey)
+	if blobref.Blobkey != "" {
+		// TODO: remove this code path once we migrated all objects to GCS
+		hdr := w.Header()
+		hdr.Set("X-AppEngine-BlobKey", string(blobref.Blobkey))
+
+		if hdr.Get("Content-Type") == "" {
+			// This value is known to dev_appserver to mean automatic.
+			// In production this is remapped to the empty value which
+			// means automatic.
+			hdr.Set("Content-Type", "application/vnd.google.appengine.auto")
+		}
+	} else {
+		hc := &http.Client{
+			Transport: &oauth2.Transport{
+				Source: google.AppEngineTokenSource(c, storage.ScopeFullControl),
+				Base:   &urlfetch.Transport{Context: c},
+			},
+		}
+		ctx := cloud.NewContext(appengine.AppID(c), hc)
+		bucket, err := file.DefaultBucketName(c)
+		if err != nil {
+			log.Errorf(ctx, "default bucket: %v", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		rc, err := storage.NewReader(ctx, bucket, blobref.Filename)
+		if err != nil {
+			log.Errorf(ctx, "NewReader: %v", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		defer rc.Close()
+		w.Header().Set("Content-Type", "application/octet-stream")
+		if _, err := io.Copy(w, rc); err != nil {
+			log.Errorf(ctx, "Copy: %v", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	}
+
 }
 
-func writeBlob(c appengine.Context, r io.Reader) (appengine.BlobKey, error) {
-	bw, err := blobstore.Create(c, "application/octet-stream")
-	if err != nil {
-		return appengine.BlobKey(""), err
+func writeBlob(c context.Context, r io.Reader) (string, error) {
+	filename := strconv.FormatInt(time.Now().UnixNano(), 10)
+	hc := &http.Client{
+		Transport: &oauth2.Transport{
+			Source: google.AppEngineTokenSource(c, storage.ScopeFullControl),
+			Base:   &urlfetch.Transport{Context: c},
+		},
 	}
+	ctx := cloud.NewContext(appengine.AppID(c), hc)
+	bucket, err := file.DefaultBucketName(c)
+	if err != nil {
+		return "", err
+	}
+	bw := storage.NewWriter(ctx, bucket, filename)
+	bw.ContentType = "application/octet-stream"
+	bw.ACL = []storage.ACLRule{{storage.AllUsers, storage.RoleReader}}
 	if _, err := io.Copy(bw, r); err != nil {
-		return appengine.BlobKey(""), err
+		return "", err
 	}
 	if err := bw.Close(); err != nil {
-		return appengine.BlobKey(""), err
+		return "", err
 	}
 
-	key, err := bw.Key()
-	return key, err
+	return filename, nil
 }
 
 // TODO: wrap this so that errors contain an instruction on how to use the service.
-// logHandler takes a compressed i3 debug log and stores it as a Gist on
-// GitHub.
+// logHandler takes a compressed i3 debug log and stores it on
+// Google Cloud Storage.
 func logHandler(w http.ResponseWriter, r *http.Request) {
 	var body bytes.Buffer
 	rd := bzip2.NewReader(io.TeeReader(r.Body, &body))
@@ -97,13 +156,13 @@ func logHandler(w http.ResponseWriter, r *http.Request) {
 
 	c := appengine.NewContext(r)
 
-	blobkey, err := writeBlob(c, &body)
+	filename, err := writeBlob(c, &body)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("blobstore: %v", err), http.StatusInternalServerError)
+		http.Error(w, fmt.Sprintf("cloud storage: %v", err), http.StatusInternalServerError)
 		return
 	}
 
-	key, err := datastore.Put(c, datastore.NewIncompleteKey(c, "blobref", nil), &Blobref{blobkey})
+	key, err := datastore.Put(c, datastore.NewIncompleteKey(c, "blobref", nil), &Blobref{Filename: filename})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
