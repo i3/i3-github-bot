@@ -76,3 +76,19 @@ How do I go further with debugging this? Can you confirm the bug?
 		t.Fatalf("Issue #1694 not recognized properly, matches = %+v", matches)
 	}
 }
+
+func TestLogFalsePositive(t *testing.T) {
+	body := `
+Here is an extract from my log:
+
+` + "```" + `
+03/28/2015 10:21:22 PM - config_parser.c:parse_config:313 - CONFIG(line 22): # Before i3 v4.8, we used to recommend this one as the default:
+` + "```" + `
+
+Not sure which version it is, though.
+`
+	matches := extractVersion(body)
+	if len(matches) > 0 {
+		t.Fatalf("logfile matched (false positive)")
+	}
+}

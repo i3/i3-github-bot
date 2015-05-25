@@ -9,12 +9,16 @@ import (
 )
 
 var (
-	reMajorVersion = regexp.MustCompile(`(i3|i3status|i3lock):?\s*(?:version|v|vers|ver)?:?\s*(3\.[a-e]|3\.\p{Greek}|[0-9]\.[0-9]+)`)
+	reMajorVersion  = regexp.MustCompile(`(i3|i3status|i3lock):?\s*(?:version|v|vers|ver)?:?\s*(3\.[a-e]|3\.\p{Greek}|[0-9]\.[0-9]+)`)
+	stripConfigLine = regexp.MustCompile(`(?m) - config_parser.c:parse_config:([0-9]+) - CONFIG\(line [0-9]+\): # Before i3 v4\.8, we used to recommend this one as the default:\s*$`)
 )
 
 // extractVersion extracts all (i3|i3status|i3lock) versions out of |body| and
 // returns the highest version (numerically sorted).
 func extractVersion(body string) []string {
+	// Replace version numbers that occur in the default config file.
+	body = stripConfigLine.ReplaceAllString(body, "")
+
 	allmatches := reMajorVersion.FindAllStringSubmatch(body, -1)
 	if len(allmatches) == 0 {
 		return []string{}
