@@ -403,11 +403,14 @@ func issuesHandler(w http.ResponseWriter, r *http.Request) {
 	transport := githubTransport(urlfetch.Transport{Context: c})
 	githubclient := github.NewClient(&http.Client{Transport: &transport})
 
+	lcBody := strings.ToLower(*payload.Issue.Body)
+	lcTitle := strings.ToLower(*payload.Issue.Title)
+
 	if *payload.Action == "opened" &&
-		(strings.Contains(*payload.Issue.Body, "enhancement") ||
-			strings.Contains(*payload.Issue.Body, "feature request") ||
-			strings.Contains(*payload.Issue.Title, "enhancement") ||
-			strings.Contains(*payload.Issue.Title, "feature request")) {
+		(strings.Contains(lcBody, "enhancement") ||
+			strings.Contains(lcBody, "feature request") ||
+			strings.Contains(lcTitle, "enhancement") ||
+			strings.Contains(lcTitle, "feature request")) {
 		// For feature requests, add the enhancement label, but only on creation.
 		// Skip all the other checks.
 		addLabel(githubclient, payload, w, "enhancement")
@@ -419,7 +422,7 @@ func issuesHandler(w http.ResponseWriter, r *http.Request) {
 	// request just enough bytes to see if the file is a bzip2 file (and
 	// reasonably small), then download the rest, uncompress, and see whether
 	// it’s an i3 log
-	if !strings.Contains(*payload.Issue.Body, "http://logs.i3wm.org") {
+	if !strings.Contains(lcBody, "http://logs.i3wm.org") {
 		if addLabel(githubclient, payload, w, "missing-log") {
 			addComment(githubclient, payload, w, "I don’t see a link to logs.i3wm.org. "+
 				"Did you follow http://i3wm.org/docs/debugging.html? "+
