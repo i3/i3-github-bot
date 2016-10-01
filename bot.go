@@ -226,12 +226,13 @@ func addComment(client *github.Client, payload interface{}, w http.ResponseWrite
 	return true
 }
 
-func getMilestones(client *github.Client, payload interface{}, w http.ResponseWriter) []github.Milestone {
+func getCompletedMilestones(client *github.Client, payload interface{}, w http.ResponseWriter) []github.Milestone {
 	repo, _ := getRepoAndIssue(payload)
 	milestones, resp, err := client.Issues.ListMilestones(
 		*repo.Owner.Login,
 		*repo.Name,
 		&github.MilestoneListOptions{
+			State:     "closed",
 			Sort:      "due_date",
 			Direction: "desc",
 		})
@@ -337,7 +338,7 @@ func issueCommentHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Verify the major version is recent enough to be supported.
-		milestones := getMilestones(githubclient, payload, w)
+		milestones := getCompletedMilestones(githubclient, payload, w)
 		if len(milestones) == 0 {
 			return
 		}
@@ -448,7 +449,7 @@ func issuesHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Verify the major version is recent enough to be supported.
-	milestones := getMilestones(githubclient, payload, w)
+	milestones := getCompletedMilestones(githubclient, payload, w)
 	if len(milestones) == 0 {
 		c.Errorf("No milestones found")
 		return
