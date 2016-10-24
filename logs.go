@@ -13,15 +13,11 @@ import (
 	"strings"
 	"time"
 
+	"cloud.google.com/go/storage"
 	"golang.org/x/net/context"
-	"golang.org/x/oauth2"
-	"golang.org/x/oauth2/google"
 	"google.golang.org/appengine"
 	"google.golang.org/appengine/datastore"
 	"google.golang.org/appengine/log"
-	"google.golang.org/appengine/urlfetch"
-	"google.golang.org/cloud"
-	"google.golang.org/cloud/storage"
 )
 
 const (
@@ -49,21 +45,10 @@ func init() {
 	http.HandleFunc("/logs/", logsHandler)
 }
 
-func cloudContext(appengineCtx context.Context) context.Context {
-	hc := &http.Client{
-		Transport: &oauth2.Transport{
-			Source: google.AppEngineTokenSource(appengineCtx, storage.ScopeFullControl),
-			Base:   &urlfetch.Transport{Context: appengineCtx},
-		},
-	}
-	return cloud.NewContext(appengine.AppID(appengineCtx), hc)
-}
-
 func logsHandler(w http.ResponseWriter, r *http.Request) {
 	var blobref Blobref
 
-	c := appengine.NewContext(r)
-	ctx := cloudContext(c)
+	ctx := appengine.NewContext(r)
 
 	strid := path.Base(r.URL.Path)
 	if strings.HasSuffix(strid, ".bz2") {
@@ -76,13 +61,19 @@ func logsHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}
-	if err := datastore.Get(c, datastore.NewKey(c, "blobref", "", intid, nil), &blobref); err != nil {
+	if err := datastore.Get(ctx, datastore.NewKey(ctx, "blobref", "", intid, nil), &blobref); err != nil {
 		log.Errorf(ctx, "datastore.Get: %v", err)
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}
 
-	rc, err := storage.NewReader(ctx, defaultBucket, blobref.Filename)
+	client, err := storage.NewClient(ctx)
+	if err != nil {
+		log.Errorf(ctx, "NewReader: %v", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	rc, err := client.Bucket(defaultBucket).Object(blobref.Filename).NewReader(ctx)
 	if err != nil {
 		log.Errorf(ctx, "NewReader: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -97,9 +88,13 @@ func logsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func writeBlob(c context.Context, r io.Reader) (string, error) {
+func writeBlob(ctx context.Context, r io.Reader) (string, error) {
 	filename := strconv.FormatInt(time.Now().UnixNano(), 10)
-	bw := storage.NewWriter(cloudContext(c), defaultBucket, filename)
+	client, err := storage.NewClient(ctx)
+	if err != nil {
+		return "", err
+	}
+	bw := client.Bucket(defaultBucket).Object(filename).NewWriter(ctx)
 	bw.ContentType = "application/octet-stream"
 	bw.ACL = []storage.ACLRule{{storage.AllUsers, storage.RoleReader}}
 	if _, err := io.Copy(bw, r); err != nil {
@@ -131,15 +126,15 @@ func logHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	c := appengine.NewContext(r)
+	ctx := appengine.NewContext(r)
 
-	filename, err := writeBlob(c, &body)
+	filename, err := writeBlob(ctx, &body)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("cloud storage: %v", err), http.StatusInternalServerError)
 		return
 	}
 
-	key, err := datastore.Put(c, datastore.NewIncompleteKey(c, "blobref", nil), &Blobref{Filename: filename})
+	key, err := datastore.Put(ctx, datastore.NewIncompleteKey(ctx, "blobref", nil), &Blobref{Filename: filename})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

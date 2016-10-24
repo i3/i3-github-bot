@@ -1,5 +1,5 @@
 application: i3-github-bot
-version: 7
+version: 8
 runtime: go
 api_version: go1
 
