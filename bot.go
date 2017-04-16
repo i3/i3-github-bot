@@ -10,6 +10,7 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"regexp"
 	"strings"
 
 	"github.com/google/go-github/github"
@@ -42,6 +43,8 @@ const updateTokenForm = `
 </body>
 </html>
 `
+
+const enhancementRegexp = regexp.MustCompile("feature.?request|enhancement")
 
 func init() {
 	http.HandleFunc("/issues", issuesHandler)
@@ -408,10 +411,7 @@ func issuesHandler(w http.ResponseWriter, r *http.Request) {
 	lcTitle := strings.ToLower(*payload.Issue.Title)
 
 	if *payload.Action == "opened" &&
-		(strings.Contains(lcBody, "enhancement") ||
-			strings.Contains(lcBody, "feature request") ||
-			strings.Contains(lcTitle, "enhancement") ||
-			strings.Contains(lcTitle, "feature request")) {
+		(enhancementRegexp.MatchString(lcBody) || enhancementRegexp.MatchString(lcTitle)) {
 		// For feature requests, add the enhancement label, but only on creation.
 		// Skip all the other checks.
 		addLabel(githubclient, payload, w, "enhancement")
