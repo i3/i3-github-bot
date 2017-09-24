@@ -1,6 +1,7 @@
 package githubbot
 
 import (
+	"context"
 	"crypto/hmac"
 	"crypto/sha1"
 	"encoding/hex"
@@ -8,17 +9,16 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"log"
 	"net/http"
 	"regexp"
 	"strings"
 
 	"github.com/google/go-github/github"
-
-	"appengine"
-	"appengine/datastore"
-	"appengine/urlfetch"
-	"appengine/user"
+	"google.golang.org/appengine"
+	"google.golang.org/appengine/datastore"
+	"google.golang.org/appengine/log"
+	"google.golang.org/appengine/urlfetch"
+	"google.golang.org/appengine/user"
 )
 
 type GitHubToken struct {
@@ -53,10 +53,10 @@ func init() {
 }
 
 func updateTokenHandler(w http.ResponseWriter, r *http.Request) {
-	c := appengine.NewContext(r)
-	u := user.Current(c)
+	ctx := appengine.NewContext(r)
+	u := user.Current(ctx)
 	if u == nil {
-		url, err := user.LoginURL(c, "/update_github_token")
+		url, err := user.LoginURL(ctx, "/update_github_token")
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -70,18 +70,18 @@ func updateTokenHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := getGitHubToken(c); err != nil {
+	if err := getGitHubToken(ctx); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	if r.Method == "POST" {
-		k := datastore.NewKey(c, "GitHubToken", "githubtoken", 0, nil)
+		k := datastore.NewKey(ctx, "GitHubToken", "githubtoken", 0, nil)
 		t := GitHubToken{
 			Token:  r.FormValue("token"),
 			Secret: r.FormValue("secret"),
 		}
-		if _, err := datastore.Put(c, k, &t); err != nil {
+		if _, err := datastore.Put(ctx, k, &t); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -90,12 +90,12 @@ func updateTokenHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, updateTokenForm, githubToken.Token, githubToken.Secret)
 }
 
-func getGitHubToken(c appengine.Context) error {
+func getGitHubToken(ctx context.Context) error {
 	if githubToken.Secret != "" && githubToken.Token != "" {
 		return nil
 	}
-	k := datastore.NewKey(c, "GitHubToken", "githubtoken", 0, nil)
-	return datastore.Get(c, k, &githubToken)
+	k := datastore.NewKey(ctx, "GitHubToken", "githubtoken", 0, nil)
+	return datastore.Get(ctx, k, &githubToken)
 }
 
 type githubTransport urlfetch.Transport
@@ -115,7 +115,7 @@ func discardResponse(resp *github.Response) {
 // readAndVerifyBody verifies the HMAC signature to make sure this request was
 // sent by GitHub with the configured secret key.
 func readAndVerifyBody(r *http.Request) ([]byte, string, error) {
-	c := appengine.NewContext(r)
+	ctx := appengine.NewContext(r)
 
 	event := r.Header.Get("X-GitHub-Event")
 	if event == "" {
@@ -142,7 +142,7 @@ func readAndVerifyBody(r *http.Request) ([]byte, string, error) {
 	}
 	got := h.Sum(nil)
 	if !hmac.Equal(want, got) {
-		c.Errorf("X-Hub-Signature: want %x, got %x", want, got)
+		log.Errorf(ctx, "X-Hub-Signature: want %x, got %x", want, got)
 		return []byte{}, "", fmt.Errorf("X-Hub-Signature wrong")
 	}
 
@@ -153,15 +153,15 @@ func getRepoAndIssue(payload interface{}) (*github.Repository, *github.Issue) {
 	switch v := payload.(type) {
 	case github.IssueCommentEvent:
 		return v.Repo, v.Issue
-	case github.IssueActivityEvent:
+	case github.IssuesEvent:
 		return v.Repo, v.Issue
 	default:
-		log.Panicf("Unknown type passed as payload")
+		panic("Unknown type passed as payload")
 	}
 	return nil, nil
 }
 
-func addLabel(client *github.Client, payload interface{}, w http.ResponseWriter, newLabel string) bool {
+func addLabel(ctx context.Context, client *github.Client, payload interface{}, w http.ResponseWriter, newLabel string) bool {
 	repo, issue := getRepoAndIssue(payload)
 
 	// Avoid useless API requests.
@@ -172,6 +172,7 @@ func addLabel(client *github.Client, payload interface{}, w http.ResponseWriter,
 	}
 
 	_, resp, err := client.Issues.AddLabelsToIssue(
+		ctx,
 		*repo.Owner.Login,
 		*repo.Name,
 		*issue.Number,
@@ -184,7 +185,7 @@ func addLabel(client *github.Client, payload interface{}, w http.ResponseWriter,
 	return true
 }
 
-func deleteLabel(client *github.Client, payload interface{}, w http.ResponseWriter, oldLabel string) bool {
+func deleteLabel(ctx context.Context, client *github.Client, payload interface{}, w http.ResponseWriter, oldLabel string) bool {
 	repo, issue := getRepoAndIssue(payload)
 
 	// Avoid useless API requests.
@@ -200,6 +201,7 @@ func deleteLabel(client *github.Client, payload interface{}, w http.ResponseWrit
 	}
 
 	resp, err := client.Issues.RemoveLabelForIssue(
+		ctx,
 		*repo.Owner.Login,
 		*repo.Name,
 		*issue.Number,
@@ -212,9 +214,10 @@ func deleteLabel(client *github.Client, payload interface{}, w http.ResponseWrit
 	return true
 }
 
-func addComment(client *github.Client, payload interface{}, w http.ResponseWriter, comment string) bool {
+func addComment(ctx context.Context, client *github.Client, payload interface{}, w http.ResponseWriter, comment string) bool {
 	repo, issue := getRepoAndIssue(payload)
 	_, resp, err := client.Issues.CreateComment(
+		ctx,
 		*repo.Owner.Login,
 		*repo.Name,
 		*issue.Number,
@@ -229,9 +232,10 @@ func addComment(client *github.Client, payload interface{}, w http.ResponseWrite
 	return true
 }
 
-func getCompletedMilestones(client *github.Client, payload interface{}, w http.ResponseWriter) []github.Milestone {
+func getCompletedMilestones(ctx context.Context, client *github.Client, payload interface{}, w http.ResponseWriter) []*github.Milestone {
 	repo, _ := getRepoAndIssue(payload)
 	milestones, resp, err := client.Issues.ListMilestones(
+		ctx,
 		*repo.Owner.Login,
 		*repo.Name,
 		&github.MilestoneListOptions{
@@ -241,15 +245,16 @@ func getCompletedMilestones(client *github.Client, payload interface{}, w http.R
 		})
 	if err != nil {
 		http.Error(w, fmt.Sprintf("ListMilestones: %v", err), http.StatusInternalServerError)
-		return []github.Milestone{}
+		return nil
 	}
 	discardResponse(resp)
 	return milestones
 }
 
-func closeIssue(client *github.Client, payload interface{}, w http.ResponseWriter) bool {
+func closeIssue(ctx context.Context, client *github.Client, payload interface{}, w http.ResponseWriter) bool {
 	repo, issue := getRepoAndIssue(payload)
 	_, resp, err := client.Issues.Edit(
+		ctx,
 		*repo.Owner.Login,
 		*repo.Name,
 		*issue.Number,
@@ -265,9 +270,9 @@ func closeIssue(client *github.Client, payload interface{}, w http.ResponseWrite
 }
 
 func issueCommentHandler(w http.ResponseWriter, r *http.Request) {
-	c := appengine.NewContext(r)
+	ctx := appengine.NewContext(r)
 
-	if err := getGitHubToken(c); err != nil {
+	if err := getGitHubToken(ctx); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -293,11 +298,11 @@ func issueCommentHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	c.Infof("request: %+v", r)
-	c.Infof("payload: %+v", payload)
+	log.Infof(ctx, "request: %+v", r)
+	log.Infof(ctx, "payload: %+v", payload)
 
 	// Wrap the urlfetch.Transport with our User-Agent and authentication.
-	transport := githubTransport(urlfetch.Transport{Context: c})
+	transport := githubTransport(urlfetch.Transport{Context: ctx})
 	githubclient := github.NewClient(&http.Client{Transport: &transport})
 
 	// We only act in case the comment is by the issue creator.
@@ -318,7 +323,7 @@ func issueCommentHandler(w http.ResponseWriter, r *http.Request) {
 
 	if currentLabels["missing-log"] {
 		if strings.Contains(*payload.Comment.Body, "://logs.i3wm.org") {
-			deleteLabel(githubclient, payload, w, "missing-log")
+			deleteLabel(ctx, githubclient, payload, w, "missing-log")
 		}
 	}
 
@@ -329,9 +334,9 @@ func issueCommentHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		// TODO: point to the other repositories if payload.Repo.Name != matches[1]
 
-		c.Infof("matches: %v", matches)
+		log.Infof(ctx, "matches: %v", matches)
 
-		deleteLabel(githubclient, payload, w, "missing-version")
+		deleteLabel(ctx, githubclient, payload, w, "missing-version")
 
 		// We only verify the major version for i3 itself, not for i3status or
 		// i3lock (those bugs are not filed in the right repository anyway, but
@@ -341,7 +346,7 @@ func issueCommentHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Verify the major version is recent enough to be supported.
-		milestones := getCompletedMilestones(githubclient, payload, w)
+		milestones := getCompletedMilestones(ctx, githubclient, payload, w)
 		if len(milestones) == 0 {
 			return
 		}
@@ -352,25 +357,25 @@ func issueCommentHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if *milestones[0].Title != majorVersion {
-			if addLabel(githubclient, payload, w, "unsupported-version") {
-				addComment(githubclient, payload, w, fmt.Sprintf(
+			if addLabel(ctx, githubclient, payload, w, "unsupported-version") {
+				addComment(ctx, githubclient, payload, w, fmt.Sprintf(
 					"Sorry, we can only support the latest major version. "+
 						"Please upgrade from %s to %s, verify the bug still exists, "+
 						"and re-open this issue.", majorVersion, *milestones[0].Title))
-				closeIssue(githubclient, payload, w)
+				closeIssue(ctx, githubclient, payload, w)
 			}
 			return
 		}
 
-		addLabel(githubclient, payload, w, *milestones[0].Title)
-		deleteLabel(githubclient, payload, w, "unsupported-version")
+		addLabel(ctx, githubclient, payload, w, *milestones[0].Title)
+		deleteLabel(ctx, githubclient, payload, w, "unsupported-version")
 	}
 }
 
 func issuesHandler(w http.ResponseWriter, r *http.Request) {
-	c := appengine.NewContext(r)
+	ctx := appengine.NewContext(r)
 
-	if err := getGitHubToken(c); err != nil {
+	if err := getGitHubToken(ctx); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -390,7 +395,7 @@ func issuesHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var payload github.IssueActivityEvent
+	var payload github.IssuesEvent
 	if err := json.Unmarshal(body, &payload); err != nil {
 		http.Error(w, fmt.Sprintf("Cannot parse JSON: %v", err), http.StatusBadRequest)
 		return
@@ -400,11 +405,11 @@ func issuesHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	c.Infof("request: %+v", r)
-	c.Infof("payload: %+v", payload)
+	log.Infof(ctx, "request: %+v", r)
+	log.Infof(ctx, "payload: %+v", payload)
 
 	// Wrap the urlfetch.Transport with our User-Agent and authentication.
-	transport := githubTransport(urlfetch.Transport{Context: c})
+	transport := githubTransport(urlfetch.Transport{Context: ctx})
 	githubclient := github.NewClient(&http.Client{Transport: &transport})
 
 	lcBody := strings.ToLower(*payload.Issue.Body)
@@ -414,7 +419,7 @@ func issuesHandler(w http.ResponseWriter, r *http.Request) {
 		(enhancementRegexp.MatchString(lcBody) || enhancementRegexp.MatchString(lcTitle)) {
 		// For feature requests, add the enhancement label, but only on creation.
 		// Skip all the other checks.
-		addLabel(githubclient, payload, w, "enhancement")
+		addLabel(ctx, githubclient, payload, w, "enhancement")
 		return
 	}
 
@@ -423,18 +428,18 @@ func issuesHandler(w http.ResponseWriter, r *http.Request) {
 	// request just enough bytes to see if the file is a bzip2 file (and
 	// reasonably small), then download the rest, uncompress, and see whether
 	// it’s an i3 log
-	if !strings.Contains(lcBody, "http://logs.i3wm.org") {
-		if addLabel(githubclient, payload, w, "missing-log") {
-			addComment(githubclient, payload, w, "I don’t see a link to logs.i3wm.org. "+
-				"Did you follow http://i3wm.org/docs/debugging.html? "+
+	if !strings.Contains(lcBody, "://logs.i3wm.org") {
+		if addLabel(ctx, githubclient, payload, w, "missing-log") {
+			addComment(ctx, githubclient, payload, w, "I don’t see a link to logs.i3wm.org. "+
+				"Did you follow https://i3wm.org/docs/debugging.html? "+
 				"(In case you actually provided a link to a logfile, please ignore me.)")
 		}
 	}
 
 	matches := extractVersion(*payload.Issue.Body)
 	if len(matches) == 0 {
-		if addLabel(githubclient, payload, w, "missing-version") {
-			addComment(githubclient, payload, w, "I don’t see a version number. "+
+		if addLabel(ctx, githubclient, payload, w, "missing-version") {
+			addComment(ctx, githubclient, payload, w, "I don’t see a version number. "+
 				"Could you please copy & paste the output of `i3 --version` into this issue?")
 		}
 		return
@@ -449,9 +454,9 @@ func issuesHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Verify the major version is recent enough to be supported.
-	milestones := getCompletedMilestones(githubclient, payload, w)
+	milestones := getCompletedMilestones(ctx, githubclient, payload, w)
 	if len(milestones) == 0 {
-		c.Errorf("No milestones found")
+		log.Errorf(ctx, "No milestones found")
 		return
 	}
 
@@ -461,14 +466,14 @@ func issuesHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if *milestones[0].Title != majorVersion {
-		if addLabel(githubclient, payload, w, "unsupported-version") {
-			addComment(githubclient, payload, w, fmt.Sprintf(
+		if addLabel(ctx, githubclient, payload, w, "unsupported-version") {
+			addComment(ctx, githubclient, payload, w, fmt.Sprintf(
 				"Sorry, we can only support the latest major version. "+
 					"Please upgrade from %s to %s, verify the bug still exists, "+
 					"and re-open this issue.", majorVersion, *milestones[0].Title))
-			closeIssue(githubclient, payload, w)
+			closeIssue(ctx, githubclient, payload, w)
 		}
 		return
 	}
-	addLabel(githubclient, payload, w, *milestones[0].Title)
+	addLabel(ctx, githubclient, payload, w, *milestones[0].Title)
 }
