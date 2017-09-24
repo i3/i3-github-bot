@@ -65,7 +65,7 @@ This happens with a default generated i3 config with only one line added:
 exec --no-startup-id xfce4-panel --disable-wm-check
 ` + "```" + `
 
-The log file that records the disappearance of the panel: http://logs.i3wm.org/logs/5745865499082752.bz2
+The log file that records the disappearance of the panel: https://logs.i3wm.org/logs/5745865499082752.bz2
 
 Behavior is the same under xfce4-session as well as i3-with-shmlog xsession.
 

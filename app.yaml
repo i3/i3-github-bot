@@ -1,7 +1,5 @@
-application: i3-github-bot
-version: 9
 runtime: go
-api_version: go1
+api_version: go1.8
 
 handlers:
 - url: /.*

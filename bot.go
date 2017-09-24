@@ -317,7 +317,7 @@ func issueCommentHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if currentLabels["missing-log"] {
-		if strings.Contains(*payload.Comment.Body, "http://logs.i3wm.org") {
+		if strings.Contains(*payload.Comment.Body, "://logs.i3wm.org") {
 			deleteLabel(githubclient, payload, w, "missing-log")
 		}
 	}

@@ -140,5 +140,5 @@ func logHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	fmt.Fprintf(w, "http://logs.i3wm.org/logs/%d.bz2\n", key.IntID())
+	fmt.Fprintf(w, "https://logs.i3wm.org/logs/%d.bz2\n", key.IntID())
 }
