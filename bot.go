@@ -44,7 +44,7 @@ const updateTokenForm = `
 </html>
 `
 
-const enhancementRegexp = regexp.MustCompile("feature.?request|enhancement")
+var enhancementRegexp = regexp.MustCompile("feature.?request|enhancement")
 
 func init() {
 	http.HandleFunc("/issues", issuesHandler)
