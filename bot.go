@@ -44,7 +44,8 @@ const updateTokenForm = `
 </html>
 `
 
-var enhancementRegexp = regexp.MustCompile("feature.?request|enhancement")
+var enhancementRegexp = regexp.MustCompile(`\[\s*x\s*\]\s*feature\s*request`)
+var enhancementRegexpTitle = regexp.MustCompile("feature.?request|enhancement")
 
 func init() {
 	http.HandleFunc("/issues", issuesHandler)
@@ -416,7 +417,7 @@ func issuesHandler(w http.ResponseWriter, r *http.Request) {
 	lcTitle := strings.ToLower(*payload.Issue.Title)
 
 	if *payload.Action == "opened" &&
-		(enhancementRegexp.MatchString(lcBody) || enhancementRegexp.MatchString(lcTitle)) {
+		(enhancementRegexp.MatchString(lcBody) || enhancementRegexpTitle.MatchString(lcTitle)) {
 		// For feature requests, add the enhancement label, but only on creation.
 		// Skip all the other checks.
 		addLabel(ctx, githubclient, payload, w, "enhancement")
