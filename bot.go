@@ -46,6 +46,8 @@ const updateTokenForm = `
 
 var enhancementRegexp = regexp.MustCompile(`\[\s*x\s*\]\s*feature\s*request`)
 var enhancementRegexpTitle = regexp.MustCompile("feature.?request|enhancement")
+var bugRegexp = regexp.MustCompile(`\[\s*x\s*\]\s*bug`)
+var documentationRegexp = regexp.MustCompile(`\[\s*x\s*\]\s*documentation\s*request`)
 
 func init() {
 	http.HandleFunc("/issues", issuesHandler)
@@ -416,12 +418,21 @@ func issuesHandler(w http.ResponseWriter, r *http.Request) {
 	lcBody := strings.ToLower(*payload.Issue.Body)
 	lcTitle := strings.ToLower(*payload.Issue.Title)
 
-	if *payload.Action == "opened" &&
-		(enhancementRegexp.MatchString(lcBody) || enhancementRegexpTitle.MatchString(lcTitle)) {
-		// For feature requests, add the enhancement label, but only on creation.
-		// Skip all the other checks.
-		addLabel(ctx, githubclient, payload, w, "enhancement")
-		return
+	if *payload.Action == "opened" {
+		if enhancementRegexp.MatchString(lcBody) || enhancementRegexpTitle.MatchString(lcTitle) {
+			// For feature requests, add the enhancement label, but only on creation.
+			// Skip all the other checks.
+			addLabel(ctx, githubclient, payload, w, "enhancement")
+			return
+		}
+		if documentationRegexp.MatchString(lcBody) {
+			// Same for documentation requests.
+			addLabel(ctx, githubclient, payload, w, "documentation")
+			return
+		}
+		if bugRegexp.MatchString(lcBody) {
+			addLabel(ctx, githubclient, payload, w, "bug")
+		}
 	}
 
 	// TODO: be a bit smarter about this if it turns out that people use
