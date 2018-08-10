@@ -96,7 +96,7 @@ func writeBlob(ctx context.Context, r io.Reader) (string, error) {
 	}
 	bw := client.Bucket(defaultBucket).Object(filename).NewWriter(ctx)
 	bw.ContentType = "application/octet-stream"
-	bw.ACL = []storage.ACLRule{{storage.AllUsers, storage.RoleReader}}
+	bw.ACL = []storage.ACLRule{{Entity: storage.AllUsers, Role: storage.RoleReader}}
 	if _, err := io.Copy(bw, r); err != nil {
 		return "", err
 	}
