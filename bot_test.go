@@ -1,6 +1,9 @@
 package githubbot
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestVersion1640(t *testing.T) {
 	body := `
@@ -90,5 +93,78 @@ Not sure which version it is, though.
 	matches := extractVersion(body)
 	if len(matches) > 0 {
 		t.Fatalf("logfile matched (false positive)")
+	}
+}
+
+func TestEnhancementMatch(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct {
+		name  string
+		title string
+		body  string
+		want  bool
+	}{
+		{
+			name:  "bug report",
+			title: "window movement messed up",
+			body:  "I can’t move windows correctly!",
+			want:  false,
+		},
+		{
+			name:  "template: bug report",
+			title: "this is wrong",
+			body: `## I'm submitting a…
+<pre>
+[x] Bug
+[ ] Feature Request
+[ ] Documentation Request
+[ ] Other (Please describe in detail)
+</pre>`,
+			want: false,
+		},
+		{
+			name:  "template: feature request",
+			title: "some obscure thing I always wanted",
+			body: `## I'm submitting a…
+<pre>
+[ ] Bug
+[x] Feature Request
+[ ] Documentation Request
+[ ] Other (Please describe in detail)
+</pre>`,
+			want: true,
+		},
+		{
+			name:  "template: feature request with whitespace",
+			title: "some obscure thing I always wanted",
+			body: `## I'm submitting a…
+<pre>
+[ ] Bug
+[ x	] Feature Request
+[ ] Documentation Request
+[ ] Other (Please describe in detail)
+</pre>`,
+			want: true,
+		},
+		{
+			name:  "title: feature request",
+			title: "feature request: triple-meta mod key",
+			body:  "title says it all",
+			want:  true,
+		},
+		{
+			name:  "title: enhancement",
+			title: "enhancement: triple-meta mod key",
+			body:  "title says it all",
+			want:  true,
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			got := enhancementRegexp.MatchString(strings.ToLower(tt.body)) || enhancementRegexpTitle.MatchString(strings.ToLower(tt.title))
+			if got != tt.want {
+				t.Fatalf("unexpected match: got %v, want %v", got, tt.want)
+			}
+		})
 	}
 }
