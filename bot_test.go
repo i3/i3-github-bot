@@ -1,4 +1,4 @@
-package githubbot
+package main
 
 import (
 	"strings"

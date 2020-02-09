@@ -1,4 +1,4 @@
-package githubbot
+package main
 
 import (
 	"context"
@@ -49,10 +49,13 @@ var enhancementRegexpTitle = regexp.MustCompile("feature.?request|enhancement")
 var bugRegexp = regexp.MustCompile(`\[\s*x\s*\]\s*bug`)
 var documentationRegexp = regexp.MustCompile(`\[\s*x\s*\]\s*documentation\s*request`)
 
-func init() {
+func main() {
 	http.HandleFunc("/issues", issuesHandler)
 	http.HandleFunc("/issue_comment", issueCommentHandler)
 	http.HandleFunc("/update_github_token", updateTokenHandler)
+	http.HandleFunc("/", logHandler)
+	http.HandleFunc("/logs/", logsHandler)
+	appengine.Main()
 }
 
 func updateTokenHandler(w http.ResponseWriter, r *http.Request) {

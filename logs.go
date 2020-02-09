@@ -1,4 +1,4 @@
-package githubbot
+package main
 
 import (
 	"bytes"
@@ -38,11 +38,6 @@ type Blobref struct {
 	// Cloud Storage now, not blobstore).
 	Blobkey  appengine.BlobKey
 	Filename string
-}
-
-func init() {
-	http.HandleFunc("/", logHandler)
-	http.HandleFunc("/logs/", logsHandler)
 }
 
 func logsHandler(w http.ResponseWriter, r *http.Request) {
