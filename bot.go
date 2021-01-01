@@ -44,10 +44,16 @@ const updateTokenForm = `
 </html>
 `
 
-var enhancementRegexp = regexp.MustCompile(`\[\s*x\s*\]\s*feature\s*request`)
-var enhancementRegexpTitle = regexp.MustCompile("feature.?request|enhancement")
-var bugRegexp = regexp.MustCompile(`\[\s*x\s*\]\s*bug`)
-var documentationRegexp = regexp.MustCompile(`\[\s*x\s*\]\s*documentation\s*request`)
+var (
+	enhancementRegexp = regexp.MustCompile(`\[\s*x\s*\]\s*feature\s*request`)
+
+	enhancementRegexpTitle = regexp.MustCompile("feature.?request|enhancement")
+
+	newConfigurationRegexp = regexp.MustCompile(`\[\s*x\s*\]\s*this\s*feature\s*requires\s*new\s*configuration`)
+
+	bugRegexp           = regexp.MustCompile(`\[\s*x\s*\]\s*bug`)
+	documentationRegexp = regexp.MustCompile(`\[\s*x\s*\]\s*documentation\s*request`)
+)
 
 func main() {
 	http.HandleFunc("/issues", issuesHandler)
@@ -426,13 +432,22 @@ func issuesHandler(w http.ResponseWriter, r *http.Request) {
 			// For feature requests, add the enhancement label, but only on creation.
 			// Skip all the other checks.
 			addLabel(ctx, githubclient, payload, w, "enhancement")
+
+			if newConfigurationRegexp.MatchString(lcBody) {
+				addLabel(ctx, githubclient, payload, w, "requires-configuration")
+			}
+
+			addComment(ctx, githubclient, payload, w, "Please note that new features which require additional configuration will usually not be considered. We are happy with the feature set of i3 and want to focus in fixing bugs instead. We do accept feature requests, however, and will evaluate whether the added benefit (clearly) outweighs the complexity it adds to i3.")
+
 			return
 		}
+
 		if documentationRegexp.MatchString(lcBody) {
 			// Same for documentation requests.
 			addLabel(ctx, githubclient, payload, w, "documentation")
 			return
 		}
+
 		if bugRegexp.MatchString(lcBody) {
 			addLabel(ctx, githubclient, payload, w, "bug")
 		}
