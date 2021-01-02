@@ -168,3 +168,40 @@ func TestEnhancementMatch(t *testing.T) {
 		})
 	}
 }
+
+func TestNewConfigurationMatch(t *testing.T) {
+	t.Parallel()
+
+	// This test matrix covers fewer cases than TestEnhancementMatch, which
+	// already covers a bunch of variations, and the regular expressions are
+	// similarly constructed.
+	for _, tt := range []struct {
+		name  string
+		title string
+		body  string
+		want  bool
+	}{
+		{
+			name:  "bug report",
+			title: "window movement messed up",
+			body:  "I can’t move windows correctly!",
+			want:  false,
+		},
+
+		{
+			name:  "template: feature request",
+			title: "some obscure thing I always wanted",
+			body: `<pre>
+[x] This feature requires new configuration and/or commands
+</pre>`,
+			want: true,
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			got := newConfigurationRegexp.MatchString(strings.ToLower(tt.body))
+			if got != tt.want {
+				t.Fatalf("unexpected match: got %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
