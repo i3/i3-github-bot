@@ -16,5 +16,5 @@ service to host i3 debug log files, since GitHub does not allow attachments at
 the time of writing. See
 [i3/docs/debugging](http://i3wm.org/docs/debugging.html) for usage instructions.
 
-To deploy a new version, use `goapp deploy app.yaml` from the [Google App
-Engine SDK for Go](https://cloud.google.com/appengine/downloads)
+To deploy a new version, use `gcloud app deploy` from the [Google Cloud
+SDK](https://cloud.google.com/sdk/docs/install)
