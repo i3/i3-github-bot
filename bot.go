@@ -437,7 +437,7 @@ func issuesHandler(w http.ResponseWriter, r *http.Request) {
 				addLabel(ctx, githubclient, payload, w, "requires-configuration")
 			}
 
-			addComment(ctx, githubclient, payload, w, "Please note that new features which require additional configuration will usually not be considered. We are happy with the feature set of i3 and want to focus in fixing bugs instead. We do accept feature requests, however, and will evaluate whether the added benefit (clearly) outweighs the complexity it adds to i3.")
+			addComment(ctx, githubclient, payload, w, "Please note that new features which require additional configuration will usually not be considered. We are happy with the feature set of i3 and want to focus in fixing bugs instead. We do accept feature requests, however, and will evaluate whether the added benefit (clearly) outweighs the complexity it adds to i3.\n\nKeep in mind that i3 provides a powerful way to interact with it through its IPC interface: https://i3wm.org/docs/ipc.html.")
 
 			return
 		}
