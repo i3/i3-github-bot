@@ -272,6 +272,7 @@ func closeIssue(ctx context.Context, client *github.Client, payload interface{},
 		*issue.Number,
 		&github.IssueRequest{
 			State: github.String("closed"),
+			StateReason: github.String("not_planned"),
 		})
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Edit: %v", err), http.StatusInternalServerError)
