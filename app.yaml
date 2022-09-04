@@ -1,4 +1,6 @@
-runtime: go111
+runtime: go115
+# Required for using the older version of AppEngine APIs we are still on.
+app_engine_apis: true
 
 handlers:
 - url: /.*

@@ -13,7 +13,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/google/go-github/github"
+	"github.com/google/go-github/v47/github"
 	"google.golang.org/appengine"
 	"google.golang.org/appengine/datastore"
 	"google.golang.org/appengine/log"
@@ -271,7 +271,7 @@ func closeIssue(ctx context.Context, client *github.Client, payload interface{},
 		*repo.Name,
 		*issue.Number,
 		&github.IssueRequest{
-			State: github.String("closed"),
+			State:       github.String("closed"),
 			StateReason: github.String("not_planned"),
 		})
 	if err != nil {
