@@ -45,13 +45,8 @@ const updateTokenForm = `
 `
 
 var (
-	enhancementRegexp = regexp.MustCompile(`\[\s*x\s*\]\s*feature\s*request`)
-
-	enhancementRegexpTitle = regexp.MustCompile("feature.?request|enhancement")
-
 	newConfigurationRegexp = regexp.MustCompile(`\[\s*x\s*\]\s*this\s*feature\s*requires\s*new\s*configuration`)
 
-	bugRegexp           = regexp.MustCompile(`\[\s*x\s*\]\s*bug`)
 	documentationRegexp = regexp.MustCompile(`\[\s*x\s*\]\s*documentation\s*request`)
 )
 
@@ -426,32 +421,20 @@ func issuesHandler(w http.ResponseWriter, r *http.Request) {
 	githubclient := github.NewClient(&http.Client{Transport: &transport})
 
 	lcBody := strings.ToLower(*payload.Issue.Body)
-	lcTitle := strings.ToLower(*payload.Issue.Title)
-
-	if *payload.Action == "opened" {
-		if enhancementRegexp.MatchString(lcBody) || enhancementRegexpTitle.MatchString(lcTitle) {
-			// For feature requests, add the enhancement label, but only on creation.
-			// Skip all the other checks.
-			addLabel(ctx, githubclient, payload, w, "enhancement")
-
-			if newConfigurationRegexp.MatchString(lcBody) {
-				addLabel(ctx, githubclient, payload, w, "requires-configuration")
-			}
-
-			addComment(ctx, githubclient, payload, w, "Please note that new features which require additional configuration will usually not be considered. We are happy with the feature set of i3 and want to focus in fixing bugs instead. We do accept feature requests, however, and will evaluate whether the added benefit (clearly) outweighs the complexity it adds to i3.\n\nKeep in mind that i3 provides a powerful way to interact with it through its IPC interface: https://i3wm.org/docs/ipc.html.")
-
-			return
+	if hasEnhancementLabel(payload.Issue) {
+		if newConfigurationRegexp.MatchString(lcBody) {
+			addLabel(ctx, githubclient, payload, w, "requires-configuration")
 		}
 
-		if documentationRegexp.MatchString(lcBody) {
-			// Same for documentation requests.
-			addLabel(ctx, githubclient, payload, w, "documentation")
-			return
-		}
+		addComment(ctx, githubclient, payload, w, "Please note that new features which require additional configuration will usually not be considered. We are happy with the feature set of i3 and want to focus in fixing bugs instead. We do accept feature requests, however, and will evaluate whether the added benefit (clearly) outweighs the complexity it adds to i3.\n\nKeep in mind that i3 provides a powerful way to interact with it through its IPC interface: https://i3wm.org/docs/ipc.html.")
 
-		if bugRegexp.MatchString(lcBody) {
-			addLabel(ctx, githubclient, payload, w, "bug")
-		}
+		return
+	}
+
+	if documentationRegexp.MatchString(lcBody) {
+		// Same for documentation requests.
+		addLabel(ctx, githubclient, payload, w, "documentation")
+		return
 	}
 
 	// TODO: be a bit smarter about this if it turns out that people use
@@ -507,4 +490,16 @@ func issuesHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	addLabel(ctx, githubclient, payload, w, *milestones[0].Title)
+}
+
+func hasEnhancementLabel(issue *github.Issue) bool {
+	if issue == nil || issue.Labels == nil {
+		return false
+	}
+	for _, label := range issue.Labels {
+		if label.GetName() == "enhancement" {
+			return true
+		}
+	}
+	return false
 }
