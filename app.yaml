@@ -1,4 +1,4 @@
-runtime: go121
+runtime: go123
 # Required for using the older version of AppEngine APIs we are still on.
 app_engine_apis: true
 
